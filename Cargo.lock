@@ -1652,6 +1652,7 @@ dependencies = [
  "hickory-resolver",
  "http",
  "httpdate",
+ "ipnet",
  "itoa",
  "log",
  "maxminddb",

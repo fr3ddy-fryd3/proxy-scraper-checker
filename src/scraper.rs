@@ -13,6 +13,11 @@ use crate::{
     utils::pretty_error,
 };
 
+/// Minimum allowed CIDR prefix length. Prefixes shorter than
+/// this (i.e. larger ranges) are rejected to prevent memory
+/// exhaustion. /16 = 65534 hosts max.
+const MIN_CIDR_PREFIX: u8 = 16;
+
 pub async fn scrape_all(
     config: Arc<Config>,
     http_client: reqwest_middleware::ClientWithMiddleware,
@@ -170,23 +175,71 @@ async fn scrape_one(
             #[cfg(feature = "tui")]
             seen_protocols.insert(protocol);
 
-            new_proxies.insert(Proxy {
-                protocol,
-                host: capture
-                    .name("host")
-                    .ok_or_eyre("failed to match \"host\" regex capture group")?
-                    .as_str()
-                    .into(),
-                port: capture
-                    .name("port")
-                    .ok_or_eyre("failed to match \"port\" regex capture group")?
-                    .as_str()
-                    .parse()?,
-                username: capture.name("username").map(|m| m.as_str().into()),
-                password: capture.name("password").map(|m| m.as_str().into()),
-                timeout: None,
-                exit_ip: None,
-            });
+            let host_str = capture
+                .name("host")
+                .ok_or_eyre(
+                    "failed to match \"host\" regex capture group",
+                )?
+                .as_str();
+            let port: u16 = capture
+                .name("port")
+                .ok_or_eyre(
+                    "failed to match \"port\" regex capture group",
+                )?
+                .as_str()
+                .parse()?;
+            let username: Option<compact_str::CompactString> =
+                capture
+                    .name("username")
+                    .map(|m| m.as_str().into());
+            let password: Option<compact_str::CompactString> =
+                capture
+                    .name("password")
+                    .map(|m| m.as_str().into());
+
+            if let Some(cidr_match) = capture.name("cidr") {
+                let prefix: u8 = cidr_match.as_str().parse()?;
+                if let Ok(addr) =
+                    host_str.parse::<std::net::Ipv4Addr>()
+                {
+                    if prefix < MIN_CIDR_PREFIX {
+                        tracing::warn!(
+                            "{}: CIDR /{prefix} is too \
+                             large (minimum prefix is \
+                             /{MIN_CIDR_PREFIX}), skipping \
+                             {host_str}/{prefix}",
+                            source.url,
+                        );
+                    } else {
+                        let net =
+                            ipnet::Ipv4Net::new(addr, prefix)?;
+                        for host_ip in net.hosts() {
+                            new_proxies.insert(Proxy {
+                                protocol,
+                                host:
+                                    compact_str::format_compact!(
+                                        "{host_ip}"
+                                    ),
+                                port,
+                                username: username.clone(),
+                                password: password.clone(),
+                                timeout: None,
+                                exit_ip: None,
+                            });
+                        }
+                    }
+                }
+            } else {
+                new_proxies.insert(Proxy {
+                    protocol,
+                    host: host_str.into(),
+                    port,
+                    username,
+                    password,
+                    timeout: None,
+                    exit_ip: None,
+                });
+            }
         }
     }
 
