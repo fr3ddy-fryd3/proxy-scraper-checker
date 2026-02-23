@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::{OptionExt as _, WrapErr as _};
+use compact_str::ToCompactString as _;
 use foldhash::HashSetExt as _;
 
 #[cfg(feature = "tui")]
@@ -12,11 +13,6 @@ use crate::{
     proxy::{Proxy, ProxyType},
     utils::pretty_error,
 };
-
-/// Minimum allowed CIDR prefix length. Prefixes shorter than
-/// this (i.e. larger ranges) are rejected to prevent memory
-/// exhaustion. /16 = 65534 hosts max.
-const MIN_CIDR_PREFIX: u8 = 16;
 
 pub async fn scrape_all(
     config: Arc<Config>,
@@ -179,41 +175,33 @@ async fn scrape_one(
                 .name("host")
                 .ok_or_eyre("failed to match \"host\" regex capture group")?
                 .as_str();
-            let port: u16 = capture
+            let port = capture
                 .name("port")
                 .ok_or_eyre("failed to match \"port\" regex capture group")?
                 .as_str()
                 .parse()?;
-            let username: Option<compact_str::CompactString> =
-                capture.name("username").map(|m| m.as_str().into());
-            let password: Option<compact_str::CompactString> =
-                capture.name("password").map(|m| m.as_str().into());
+            let username = capture.name("username").map(|m| m.as_str().into());
+            let password = capture.name("password").map(|m| m.as_str().into());
 
-            if let Some(cidr_match) = capture.name("cidr") {
-                let prefix: u8 = cidr_match.as_str().parse()?;
-                if let Ok(addr) = host_str.parse::<std::net::Ipv4Addr>() {
-                    if prefix < MIN_CIDR_PREFIX {
-                        tracing::warn!(
-                            "{}: CIDR /{prefix} is too large (minimum prefix \
-                             is /{MIN_CIDR_PREFIX}), skipping \
-                             {host_str}/{prefix}",
-                            source.url,
-                        );
-                    } else {
-                        let net = ipnet::Ipv4Net::new(addr, prefix)?;
-                        for host_ip in net.hosts() {
-                            new_proxies.insert(Proxy {
-                                protocol,
-                                host: compact_str::format_compact!("{host_ip}"),
-                                port,
-                                username: username.clone(),
-                                password: password.clone(),
-                                timeout: None,
-                                exit_ip: None,
-                            });
-                        }
+            if let Ok(ipv4_net) = capture
+                .name("host_cidr")
+                .ok_or_eyre(
+                    "failed to match \"host_cidr\" regex capture group",
+                )?
+                .as_str()
+                .parse::<ipnet::Ipv4Net>()
+            {
+                new_proxies.extend(ipv4_net.hosts().map(move |host_ip| {
+                    Proxy {
+                        protocol,
+                        host: host_ip.to_compact_string(),
+                        port,
+                        username: username.clone(),
+                        password: password.clone(),
+                        timeout: None,
+                        exit_ip: None,
                     }
-                }
+                }));
             } else {
                 new_proxies.insert(Proxy {
                     protocol,
