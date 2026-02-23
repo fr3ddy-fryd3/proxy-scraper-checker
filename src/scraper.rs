@@ -177,31 +177,21 @@ async fn scrape_one(
 
             let host_str = capture
                 .name("host")
-                .ok_or_eyre(
-                    "failed to match \"host\" regex capture group",
-                )?
+                .ok_or_eyre("failed to match \"host\" regex capture group")?
                 .as_str();
             let port: u16 = capture
                 .name("port")
-                .ok_or_eyre(
-                    "failed to match \"port\" regex capture group",
-                )?
+                .ok_or_eyre("failed to match \"port\" regex capture group")?
                 .as_str()
                 .parse()?;
             let username: Option<compact_str::CompactString> =
-                capture
-                    .name("username")
-                    .map(|m| m.as_str().into());
+                capture.name("username").map(|m| m.as_str().into());
             let password: Option<compact_str::CompactString> =
-                capture
-                    .name("password")
-                    .map(|m| m.as_str().into());
+                capture.name("password").map(|m| m.as_str().into());
 
             if let Some(cidr_match) = capture.name("cidr") {
                 let prefix: u8 = cidr_match.as_str().parse()?;
-                if let Ok(addr) =
-                    host_str.parse::<std::net::Ipv4Addr>()
-                {
+                if let Ok(addr) = host_str.parse::<std::net::Ipv4Addr>() {
                     if prefix < MIN_CIDR_PREFIX {
                         tracing::warn!(
                             "{}: CIDR /{prefix} is too \
@@ -211,15 +201,11 @@ async fn scrape_one(
                             source.url,
                         );
                     } else {
-                        let net =
-                            ipnet::Ipv4Net::new(addr, prefix)?;
+                        let net = ipnet::Ipv4Net::new(addr, prefix)?;
                         for host_ip in net.hosts() {
                             new_proxies.insert(Proxy {
                                 protocol,
-                                host:
-                                    compact_str::format_compact!(
-                                        "{host_ip}"
-                                    ),
+                                host: compact_str::format_compact!("{host_ip}"),
                                 port,
                                 username: username.clone(),
                                 password: password.clone(),
