@@ -194,9 +194,8 @@ async fn scrape_one(
                 if let Ok(addr) = host_str.parse::<std::net::Ipv4Addr>() {
                     if prefix < MIN_CIDR_PREFIX {
                         tracing::warn!(
-                            "{}: CIDR /{prefix} is too \
-                             large (minimum prefix is \
-                             /{MIN_CIDR_PREFIX}), skipping \
+                            "{}: CIDR /{prefix} is too large (minimum prefix \
+                             is /{MIN_CIDR_PREFIX}), skipping \
                              {host_str}/{prefix}",
                             source.url,
                         );
